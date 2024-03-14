@@ -1,0 +1,208 @@
+from random import shuffle
+from google.colab import output
+from copy import copy
+from copy import deepcopy
+
+class player:
+
+    def __init__(self, start_chips: int):
+
+        self.cards = []
+        self.chips = start_chips
+        self.score = 0
+
+
+    def __copy__(self):
+
+        new_player = player(self.chips)
+        new_player.cards = self.cards.copy()
+        new_player.chips = self.chips
+        new_player.score = self.score
+        return new_player
+
+
+class game:
+
+    def __init__(self, num_players: int, start_chips: int, max_card: int, num_cards: int):
+
+        self.p = []
+        for i in range(num_players):
+            (self.p).append(player(start_chips))
+
+        self.deck = []
+        for i in range(max_card):
+            (self.deck).append(i+1)
+            shuffle(self.deck)
+        for i in range(max_card - num_cards):
+            (self.deck).pop(0)
+
+        self.available_chips = 0
+        self.turn = 0
+
+
+    def action(self, choice):
+
+        if choice == 1 or self.p[self.turn].chips == 0:
+            self.p[self.turn].chips += self.available_chips
+            self.available_chips = 0
+
+            ((self.p)[self.turn].cards).append(self.deck[0])
+            self.p[self.turn].cards.sort()
+
+            self.deck.pop(0)
+
+        else:
+            self.p[self.turn].chips -= 1
+            self.available_chips += 1
+            self.turn = (self.turn + 1) % len(self.p)
+
+        for i in range(len(self.p)):
+            self.p[i].score = 0
+            if len(self.p[i].cards) > 0:
+                for j in range(len(self.p[i].cards)):
+                    if j == 0:
+                        self.p[i].score = self.p[i].cards[j]
+                    else:
+                        if self.p[i].cards[j] != self.p[i].cards[j-1] + 1:
+                            self.p[i].score += self.p[i].cards[j]
+            self.p[i].score -= self.p[i].chips
+
+        return self
+
+
+    def print_game_state(self):
+
+        if len(self.deck) > 0:
+            print("Available Card:", self.deck[0])
+            print("Chips:", self.available_chips, "\n")
+
+        longest = 0
+        for i in range(len(self.p)):
+            if longest < len(self.p[i].cards):
+                longest = len(self.p[i].cards)
+
+        for i in range(len(self.p)):
+            if i == self.turn:
+                print('\033[1mPlayer', i, "chips:", self.p[i].chips, "\tcards:", self.p[i].cards, '\033[0m')
+            else:
+                print("Player", i, "chips:", self.p[i].chips, "\tcards:", self.p[i].cards)
+        print()
+
+
+    def print_scores(self):
+
+        for i in range(len(self.p)):
+            if self.p[i].score >= 0:
+                print("Player", i, "score:  ", self.p[i].score)
+            else:
+                print("Player", i, "score: ", self.p[i].score)
+
+
+    def __copy__(self):
+
+        new_game = game(0, 0, 0, 0)
+        new_game.deck = self.deck.copy()
+        new_game.p = deepcopy(self.p)
+        new_game.available_chips = self.available_chips
+        new_game.turn = self.turn
+        return new_game
+
+
+    def informed_choice(self, depth: int, act: int):
+
+        all_scores = []
+        for i in range(len(self.p)):
+            all_scores.append(self.p[i].score)
+
+        if depth == 0 or len(self.deck) == 0:
+            return {"utility": 0, "scores": all_scores, "actions": [act]}
+
+        elif self.p[self.turn].chips == 0:
+            next_layer = (copy(self).action(1)).informed_choice(depth-1, 1)
+            next_layer["actions"].append(act)
+            return next_layer
+
+        else:
+            take = (copy(self).action(1)).informed_choice(depth-1, 1)
+            take["actions"].append(act)
+            take["utility"] = take["scores"][self.turn] - min(take["scores"])
+
+            give = (copy(self).action(0)).informed_choice(depth-1, 0)
+            give["actions"].append(act)
+            give["utility"] = give["scores"][self.turn] - min(give["scores"])
+
+            if take["utility"] <= give["utility"]:
+                return take
+            else:
+                return give
+
+
+    def blind_choice(self, depth: int, act):
+
+        all_scores = []
+        for i in range(len(self.p)):
+            all_scores.append(self.p[i].score)
+
+        if depth == 0 or len(self.deck) == 0 or act == 1:
+            return {"utility": 0, "scores": all_scores, "actions": [act]}
+
+        elif self.p[self.turn].chips == 0:
+            next_layer = (copy(self).action(1)).blind_choice(depth-1, 1)
+            return {"utility": next_layer["utility"], "scores": next_layer["scores"], "actions": next_layer["actions"]}
+
+        else:
+            take = copy(self).action(1).blind_choice(depth-1, 1)
+            take["utility"] = take["scores"][self.turn] - min(take["scores"])
+
+            give = (copy(self).action(0)).blind_choice(depth-1, 0)
+            give["actions"].append(0)
+            give["utility"] = give["scores"][self.turn] - min(give["scores"])
+
+            if take["utility"] <= give["utility"]:
+                return take
+            else:
+                return give
+
+
+    def weighted_blind_choice(self, depth, act, max_card):
+
+        all_scores = []
+        for i in range(len(self.p)):
+            all_scores.append(self.p[i].score)
+
+        if depth == 0 or len(self.deck) == 0:
+            return {"utility": 0, "scores": all_scores, "actions": [act]}
+
+        elif self.p[self.turn].chips == 0:
+            next_layer = copy(self).action(1).weighted_blind_choice(depth-1, 1, max_card)
+            next_layer["actions"].append(1)
+            return next_layer
+
+        else:
+            potential_cards = []
+            for i in range(max_card):
+                potential_cards.append(i+1)
+
+            for i in range(len(self.p)):
+                for j in range(len(self.p[i].cards)):
+                    if self.p[i].cards[j] in potential_cards:
+                        potential_cards.remove(self.p[i].cards[j])
+
+            take_utilities = []
+            for i in range(len(potential_cards)):
+                take_state = copy(self)
+                take_state.action(1)
+                if len(take_state.deck) > 0:
+                    take_state.deck[0] = potential_cards[i]
+                take = take_state.weighted_blind_choice(depth-1, 1, max_card)
+                take_utilities.append(take["scores"][take_state.turn] - min(take["scores"]))
+            take["actions"].append(1)
+
+            give = copy(self).action(0).weighted_blind_choice(depth-1, 0, max_card)
+            give["actions"].append(0)
+            give["utility"] = give["scores"][self.turn] - min(give["scores"])
+
+            if sum(take_utilities)/len(take_utilities) <= give["utility"]:
+                return take
+            else:
+                return give

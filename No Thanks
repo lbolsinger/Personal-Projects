@@ -6,6 +6,7 @@ from copy import deepcopy
 class player:
 
     def __init__(self, start_chips: int):
+	     """Initializes the conditions of a Player."""
 
         self.cards = []
         self.chips = start_chips
@@ -13,6 +14,7 @@ class player:
 
 
     def __copy__(self):
+	 	  """Makes a copy of a player with the same field values."""
 
         new_player = player(self.chips)
         new_player.cards = self.cards.copy()
@@ -24,7 +26,8 @@ class player:
 class game:
 
     def __init__(self, num_players: int, start_chips: int, max_card: int, num_cards: int):
-
+		  """Initializes the game state by creating Players and communal aspects of the game."""
+		  
         self.p = []
         for i in range(num_players):
             (self.p).append(player(start_chips))
@@ -41,23 +44,35 @@ class game:
 
 
     def action(self, choice):
+		  """Allows the Player to make a decision where 1 is take and 0 is give.
+		  The fields of the Player fields are updated accordingly, where take adds 
+		  the available_card value to Player's cards and adds the available_tokens
+		  to the Player's tokens; give removes one token from Player to be added to 
+		  available_tokens."""
 
+		  # must take if Player has no tokens to give
         if choice == 1 or self.p[self.turn].chips == 0:
             self.p[self.turn].chips += self.available_chips
             self.available_chips = 0
 
+				# Player's cards are sorted so the score can be re-calculated
             ((self.p)[self.turn].cards).append(self.deck[0])
             self.p[self.turn].cards.sort()
 
+				# available card is removed
             self.deck.pop(0)
 
         else:
+		  		# one token from Player is removed
             self.p[self.turn].chips -= 1
             self.available_chips += 1
             self.turn = (self.turn + 1) % len(self.p)
 
+		  # Score is re-calculated
         for i in range(len(self.p)):
             self.p[i].score = 0
+				
+				# only the lowest of a run of consecutive card values is accounted for
             if len(self.p[i].cards) > 0:
                 for j in range(len(self.p[i].cards)):
                     if j == 0:
@@ -65,12 +80,15 @@ class game:
                     else:
                         if self.p[i].cards[j] != self.p[i].cards[j-1] + 1:
                             self.p[i].score += self.p[i].cards[j]
+
+				# tokens are negative points
             self.p[i].score -= self.p[i].chips
 
         return self
 
 
     def print_game_state(self):
+	     """Prints the cards for each player, the number of tokens, and all communal values."""
 
         if len(self.deck) > 0:
             print("Available Card:", self.deck[0])
@@ -90,7 +108,8 @@ class game:
 
 
     def print_scores(self):
-
+        """Prints the score of each Player."""
+		  
         for i in range(len(self.p)):
             if self.p[i].score >= 0:
                 print("Player", i, "score:  ", self.p[i].score)
@@ -99,6 +118,7 @@ class game:
 
 
     def __copy__(self):
+	 	  """Duplicated the current game state as a different reference point."""
 
         new_game = game(0, 0, 0, 0)
         new_game.deck = self.deck.copy()
@@ -109,20 +129,27 @@ class game:
 
 
     def informed_choice(self, depth: int, act: int):
-
-        all_scores = []
+        """Recursively copies game_states and returns a list of actions that the Player
+		  taking a turn at a given time does such that the initial Player's score is optimized
+		  at the time of decision."""
+		  
+		  all_scores = []
         for i in range(len(self.p)):
             all_scores.append(self.p[i].score)
 
+		  # leaf of the tree when there are no more cards to be viewed or the expected tree depth has been reached
         if depth == 0 or len(self.deck) == 0:
             return {"utility": 0, "scores": all_scores, "actions": [act]}
 
-        elif self.p[self.turn].chips == 0:
+        # single branch node where the only option for the Player is to take the available card; no tokens
+		  elif self.p[self.turn].chips == 0:
             next_layer = (copy(self).action(1)).informed_choice(depth-1, 1)
             next_layer["actions"].append(act)
             return next_layer
 
-        else:
+        # copies the binary outcomes of each direction on the node
+		  # returns the one with the highest utility for the Player making the decision at that node
+		  else:
             take = (copy(self).action(1)).informed_choice(depth-1, 1)
             take["actions"].append(act)
             take["utility"] = take["scores"][self.turn] - min(take["scores"])
@@ -138,11 +165,13 @@ class game:
 
 
     def blind_choice(self, depth: int, act):
+	     """Makes a decision for the current Player where the order of the subsequent cards is unknown."""
 
         all_scores = []
         for i in range(len(self.p)):
             all_scores.append(self.p[i].score)
 
+		  # once a card is taken, no more information is available to proceed down the tree
         if depth == 0 or len(self.deck) == 0 or act == 1:
             return {"utility": 0, "scores": all_scores, "actions": [act]}
 
@@ -165,7 +194,9 @@ class game:
 
 
     def weighted_blind_choice(self, depth, act, max_card):
-
+		  """Makes a decision for the current Player where the deck order is unknown, but the decision averages the utility of 
+		  each possible card that could be drawn."""
+		  
         all_scores = []
         for i in range(len(self.p)):
             all_scores.append(self.p[i].score)
@@ -206,3 +237,18 @@ class game:
                 return take
             else:
                 return give
+
+
+# Tests the game with 1 player against the weighted_blind_choice decisions
+g = game(2, 5, 9, 6)
+while len(g.deck) > 0:
+    #print(g.deck)
+    g.print_game_state()
+    if g.turn == 0:
+        g.action(g.weighted_blind_choice(6, '', 9)["actions"][-1])
+    else:
+        g.action(int(input("\n>>> ")))
+    output.clear()
+print("GAME ENDS\n")
+g.print_game_state()
+g.print_scores()
